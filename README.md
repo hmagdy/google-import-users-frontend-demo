@@ -8,7 +8,7 @@
 
 - make sure you are using an email with admin access for Admin directory SDK
 
-- Go to http://localhost:3000/frontend-demo/contact-users and authorize a workspace user
+- Go to http://localhost:3000 and authorize a workspace user
 
 ### Google services used:
 
