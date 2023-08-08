@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>People API Quickstart</title>
+    <meta charset="utf-8" />
+</head>
+
+<body>
+    <p>People API Quickstart</p>
+
+    <!--Add buttons to initiate auth sequence and sign out-->
+    <button id="authorize_button" onclick="handleAuthClick()">Authorize</button>
+    <button id="signout_button" onclick="handleSignoutClick()">Sign Out</button>
+
+    <pre id="content" style="white-space: pre-wrap;"></pre>
+
+    <script type="text/javascript">
+        /* exported gapiLoaded */
+        /* exported gisLoaded */
+        /* exported handleAuthClick */
+        /* exported handleSignoutClick */
+
+        // TODO(developer): Set to client ID and API key from the Developer Console
+
+        // TD2-Auth-By-Google-Staging --> https://console.cloud.google.com/apis/credentials/oauthclient/232365258888-a37s62floflmfjlmq2npbf1qqnp7eu68.apps.googleusercontent.com?project=td2-backend-staging
+        const CLIENT_ID = '87105781147-q4e3ukdq2v2vei5891rmo717cob6mtvo.apps.googleusercontent.com';
+
+        // TD Google Import Users Demo --> https://console.cloud.google.com/apis/credentials/key/9c8dd43e-8e35-4dd5-81f0-f732014966ee?project=td2-backend-staging
+        const API_KEY = 'AIzaSyC5cIV31ephb0tlWdkABTvKE7DS3mNr7mc';
+
+
+
+        // Discovery doc URL for APIs used by the quickstart
+        const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/people/v1/rest';
+
+        // Authorization scopes required by the API; multiple scopes can be
+        // included, separated by spaces.
+
+
+        let tokenClient;
+        let gapiInited = false;
+        let gisInited = false;
+
+        document.getElementById('authorize_button').style.visibility = 'hidden';
+        document.getElementById('signout_button').style.visibility = 'hidden';
+
+        /**
+         * Callback after api.js is loaded.
+         */
+        function gapiLoaded() {
+            gapi.load('client', initializeGapiClient);
+        }
+
+        /**
+         * Callback after the API client is loaded. Loads the
+         * discovery doc to initialize the API.
+         */
+        async function initializeGapiClient() {
+            await gapi.client.init({
+                apiKey: API_KEY,
+                discoveryDocs: [DISCOVERY_DOC],
+            });
+            gapiInited = true;
+            maybeEnableButtons();
+        }
+
+        /**
+         * Callback after Google Identity Services are loaded.
+         */
+        function gisLoaded() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/contacts.readonly \
+            https://www.googleapis.com/auth/gmail.readonly\
+            https://www.googleapis.com/auth/gmail.readonly \
+            https://www.googleapis.com/auth/userinfo.email \
+            https://www.googleapis.com/auth/userinfo.profile \
+            https://www.googleapis.com/auth/directory.readonly',
+                callback: '', // defined later
+            });
+            gisInited = true;
+            maybeEnableButtons();
+        }
+
+        /**
+         * Enables user interaction after all libraries are loaded.
+         */
+        function maybeEnableButtons() {
+            if (gapiInited && gisInited) {
+                document.getElementById('authorize_button').style.visibility = 'visible';
+            }
+        }
+
+        /**
+         *  Sign in the user upon button click.
+         */
+        function handleAuthClick() {
+            tokenClient.callback = async (resp) => {
+                if (resp.error !== undefined) {
+                    throw (resp);
+                }
+                document.getElementById('signout_button').style.visibility = 'visible';
+                document.getElementById('authorize_button').innerText = 'Refresh';
+                await listConnectionNames();
+            };
+
+            if (gapi.client.getToken() === null) {
+                // Prompt the user to select a Google Account and ask for consent to share their data
+                // when establishing a new session.
+                tokenClient.requestAccessToken({ prompt: 'consent' });
+            } else {
+                // Skip display of account chooser and consent dialog for an existing session.
+                tokenClient.requestAccessToken({ prompt: '' });
+            }
+        }
+
+        /**
+         *  Sign out the user upon button click.
+         */
+        function handleSignoutClick() {
+            const token = gapi.client.getToken();
+            if (token !== null) {
+                google.accounts.oauth2.revoke(token.access_token);
+                gapi.client.setToken('');
+                document.getElementById('content').innerText = '';
+                document.getElementById('authorize_button').innerText = 'Authorize';
+                document.getElementById('signout_button').style.visibility = 'hidden';
+            }
+        }
+
+        async function getUserEmailType() {
+            try {
+                const { result: person } = await gapi.client.people.people.get({
+                    resourceName: 'people/me',
+                    personFields: 'emailAddresses'
+                });
+
+                console.log('person');
+                console.log(person);
+                const email = person.emailAddresses[0].value;
+                console.log('email', JSON.stringify(email));
+                return email.endsWith('gmail.com') ? 'Gmail' : 'Google-Workspace';
+            } catch (error) {
+                console.error('Error getting user profile:', error.message);
+                throw error;
+            }
+        }
+
+        /**
+         * Print the display name if available for 10 connections.
+         */
+        async function listConnectionNames() {
+            let response;
+            let output
+            try {
+                const emailType = await getUserEmailType();
+                console.log('emailType')
+                console.log(emailType)
+                // first 10 users
+                if (emailType === "Gmail") {
+                    response = await gapi.client.people.people.connections.list({
+                        'resourceName': 'people/me',
+                        'pageSize': 100,
+                        'personFields': 'names,emailAddresses',
+                    });
+                    console.log('Gmail response')
+                    console.log(response)
+                    output = response.result.connections;
+                } else if (emailType === "Google-Workspace") {
+                    response = await gapi.client.people.people.listDirectoryPeople({
+                        pageSize: 100,
+                        readMask: 'names,emailAddresses',
+                        sources: ['DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE']
+                    });
+                    console.log('Google-Workspace response')
+                    console.log(response)
+                    output = response.result.people;
+                }
+            } catch (err) {
+                document.getElementById('content').innerText = err.message;
+                return;
+            }
+
+            document.getElementById('content').innerText = JSON.stringify(output);
+        }
+    </script>
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+</body>
+
+</html>
